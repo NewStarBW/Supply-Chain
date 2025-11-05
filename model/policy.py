@@ -7,64 +7,64 @@ from model.decoder import Decoder
 class PolicyNetwork(nn.Module):
     def __init__(self, input_dim, embed_dim, num_heads, num_layers, num_vehicles):
         """
-        The main policy network, combining Encoder, Recorders, and Decoder.
+        主策略网络，组合了编码器、记录器和解码器。
 
-        Args:
-            input_dim (int): Dimension of the raw input features for each node.
-            embed_dim (int): The embedding dimension.
-            num_heads (int): Number of attention heads in the encoder.
-            num_layers (int): Number of attention layers in the encoder.
-            num_vehicles (int): The number of vehicles.
+        参数:
+            input_dim (int): 每个节点的原始输入特征维度。
+            embed_dim (int): 嵌入维度。
+            num_heads (int): 编码器中的注意力头数。
+            num_layers (int): 编码器中的注意力层数。
+            num_vehicles (int): 车辆数量。
         """
         super(PolicyNetwork, self).__init__()
         self.embed_dim = embed_dim
         self.num_vehicles = num_vehicles
 
-        # --- Main Components ---
+        # --- 主要组件 ---
         self.encoder = Encoder(input_dim, embed_dim, num_heads, num_layers)
         self.decoder = Decoder(embed_dim, num_heads)
 
-        # --- Route Recorders ---
-        # Local recorders for each vehicle
-        local_recorder_input_dim = 3 # pos(2) + load(1)
+        # --- 路径记录器 ---
+        # 每辆车的局部记录器
+        local_recorder_input_dim = 3 # 位置(2) + 负载(1)
         self.local_recorders = nn.ModuleList(
             [RouteRecorder(local_recorder_input_dim, embed_dim) for _ in range(num_vehicles)]
         )
 
-        # Global recorder
+        # 全局记录器
         global_recorder_input_dim = local_recorder_input_dim * num_vehicles
         self.global_recorder = RouteRecorder(global_recorder_input_dim, embed_dim)
 
     def forward(self, problem_features, vehicle_states, recorder_hidden_states, mask):
         """
-        Performs one decoding step for all vehicles.
-        Note: In the paper, vehicles are decoded sequentially within a step.
-              This implementation simplifies it to a parallel step for efficiency,
-              but a sequential loop is needed at the training/inference level.
+        为所有车辆执行一个解码步骤。
+        注意：在论文中，车辆在一个步骤内是顺序解码的。
+              此实现为提高效率简化为并行步骤，
+              但在训练/推理层面需要一个顺序循环。
 
-        Args:
-            problem_features (Tensor): Features of all nodes, shape (batch_size, num_nodes, input_dim).
-            vehicle_states (Tensor): Current states of all vehicles (pos, load),
-                                     shape (batch_size, num_vehicles, 3).
-            recorder_hidden_states (tuple): A tuple containing (local_h, global_h).
-                                            local_h shape: (batch_size, num_vehicles, embed_dim)
-                                            global_h shape: (batch_size, embed_dim)
-            mask (Tensor): Mask of invalid nodes for each vehicle,
-                           shape (batch_size, num_vehicles, num_nodes).
+        参数:
+            problem_features (Tensor): 所有节点的特征，形状 (批次大小, 节点数量, 输入维度)。
+            vehicle_states (Tensor): 所有车辆的当前状态 (位置, 负载)，
+                                     形状 (批次大小, 车辆数量, 3)。
+            recorder_hidden_states (tuple): 包含 (local_h, global_h) 的元组。
+                                            local_h 形状: (批次大小, 车辆数量, 嵌入维度)
+                                            global_h 形状: (批次大小, 嵌入维度)
+            mask (Tensor): 每辆车无效节点的掩码，
+                           形状 (批次大小, 车辆数量, 节点数量)。
 
-        Returns:
-            log_probs (Tensor): Log probabilities for each vehicle,
-                                shape (batch_size, num_vehicles, num_nodes).
-            next_hidden_states (tuple): Updated hidden states (next_local_h, next_global_h).
+        返回:
+            log_probs (Tensor): 每辆车的对数概率，
+                                形状 (批次大小, 车辆数量, 节点数量)。
+            next_hidden_states (tuple): 更新后的隐藏状态 (next_local_h, next_global_h)。
         """
         batch_size, num_nodes, _ = problem_features.shape
         local_h, global_h = recorder_hidden_states
 
-        # --- Encoder ---
-        # This would typically be done only once per problem instance
+        # --- 编码器 ---
+        # 这通常每个问题实例只执行一次
         node_embeddings, graph_embedding = self.encoder(problem_features)
 
-        # --- Route Recorders Update ---
+        # --- 路径记录器更新 ---
         next_local_h = []
         for i in range(self.num_vehicles):
             h_prev = local_h[:, i, :]
@@ -77,15 +77,15 @@ class PolicyNetwork(nn.Module):
         all_vehicle_states = vehicle_states.view(batch_size, -1)
         next_global_h = self.global_recorder(all_vehicle_states, global_h)
 
-        # --- Decoder ---
+        # --- 解码器 ---
         log_probs = []
         for i in range(self.num_vehicles):
-            # Eq. 12: Construct observation vector
+            # 公式 12: 构建观测向量
             observation = graph_embedding + next_local_h[:, i, :] + next_global_h
 
             vehicle_mask = mask[:, i, :]
 
-            # Get log probabilities for the current vehicle
+            # 获取当前车辆的对数概率
             lp = self.decoder(observation, node_embeddings, vehicle_mask)
             log_probs.append(lp.unsqueeze(1))
 
@@ -94,8 +94,8 @@ class PolicyNetwork(nn.Module):
         return log_probs, (next_local_h, next_global_h)
 
 if __name__ == '__main__':
-    # Hyperparameters
-    INPUT_DIM = 6 # loc(2)+demand(1)+serv_time(1)+tw(2)
+    # 超参数
+    INPUT_DIM = 6 # 位置(2)+需求(1)+服务时间(1)+时间窗(2)
     EMBED_DIM = 128
     NUM_HEADS = 8
     NUM_LAYERS = 3
@@ -105,7 +105,7 @@ if __name__ == '__main__':
 
     policy_net = PolicyNetwork(INPUT_DIM, EMBED_DIM, NUM_HEADS, NUM_LAYERS, NUM_VEHICLES)
 
-    # Dummy inputs
+    # 虚拟输入
     dummy_features = torch.rand(BATCH_SIZE, NUM_NODES, INPUT_DIM)
     dummy_vehicle_states = torch.rand(BATCH_SIZE, NUM_VEHICLES, 3)
     dummy_local_h = torch.zeros(BATCH_SIZE, NUM_VEHICLES, EMBED_DIM)
@@ -119,15 +119,14 @@ if __name__ == '__main__':
         dummy_mask
     )
 
-    print("Policy Network Test:")
-    print("Input features shape:", dummy_features.shape)
-    print("Input vehicle states shape:", dummy_vehicle_states.shape)
-    print("Output log_probs shape:", log_probs.shape)
-    print("Next local hidden states shape:", next_local_h.shape)
-    print("Next global hidden state shape:", next_global_h.shape)
+    print("策略网络测试:")
+    print("输入特征形状:", dummy_features.shape)
+    print("输入车辆状态形状:", dummy_vehicle_states.shape)
+    print("输出对数概率形状:", log_probs.shape)
+    print("下一个局部隐藏状态形状:", next_local_h.shape)
+    print("下一个全局隐藏状态形状:", next_global_h.shape)
 
     assert log_probs.shape == (BATCH_SIZE, NUM_VEHICLES, NUM_NODES)
     assert next_local_h.shape == (BATCH_SIZE, NUM_VEHICLES, EMBED_DIM)
     assert next_global_h.shape == (BATCH_SIZE, EMBED_DIM)
-    print("Test passed!")
-
+    print("测试通过!")

@@ -5,13 +5,13 @@ import math
 class Encoder(nn.Module):
     def __init__(self, input_dim, embed_dim, num_heads, num_layers):
         """
-        Encoder module based on Multi-Head Attention.
+        基于多头注意力的编码器模块。
 
-        Args:
-            input_dim (int): Dimension of the raw input features for each node.
-            embed_dim (int): The embedding dimension.
-            num_heads (int): Number of attention heads.
-            num_layers (int): Number of attention layers.
+        参数:
+            input_dim (int): 每个节点的原始输入特征维度。
+            embed_dim (int): 嵌入维度。
+            num_heads (int): 注意力头的数量。
+            num_layers (int): 注意力层的数量。
         """
         super(Encoder, self).__init__()
         self.embed_dim = embed_dim
@@ -23,26 +23,26 @@ class Encoder(nn.Module):
 
     def forward(self, x):
         """
-        Forward pass for the encoder.
+        编码器的前向传播。
 
-        Args:
-            x (Tensor): Input tensor of shape (batch_size, num_nodes, input_dim).
+        参数:
+            x (Tensor): 输入张量，形状为 (批次大小, 节点数量, 输入维度)。
 
-        Returns:
-            node_embeddings (Tensor): Embeddings for each node, shape (batch_size, num_nodes, embed_dim).
-            graph_embedding (Tensor): Embedding for the entire graph, shape (batch_size, embed_dim).
+        返回:
+            node_embeddings (Tensor): 每个节点的嵌入，形状为 (批次大小, 节点数量, 嵌入维度)。
+            graph_embedding (Tensor): 整个图的嵌入，形状为 (批次大小, 嵌入维度)。
         """
-        # Initial projection
-        h = self.initial_projection(x) # (batch_size, num_nodes, embed_dim)
+        # 初始投影
+        h = self.initial_projection(x) # (批次大小, 节点数量, 嵌入维度)
 
-        # Pass through attention layers
+        # 通过注意力层
         for layer in self.attention_layers:
             h = layer(h)
 
-        # Final node embeddings
+        # 最终的节点嵌入
         node_embeddings = h
 
-        # Graph embedding (context vector)
+        # 图嵌入 (上下文向量)
         graph_embedding = h.mean(dim=1)
 
         return node_embeddings, graph_embedding
@@ -51,8 +51,8 @@ class Encoder(nn.Module):
 class MultiHeadAttentionLayer(nn.Module):
     def __init__(self, embed_dim, num_heads):
         """
-        A single layer of Multi-Head Attention followed by a Feed-Forward network.
-        Corresponds to equations (6), (7), (8) in the paper.
+        一个多头注意力层，后跟一个前馈网络。
+        对应论文中的公式 (6), (7), (8)。
         """
         super(MultiHeadAttentionLayer, self).__init__()
         self.mha = MultiHeadAttention(embed_dim, num_heads)
@@ -63,23 +63,23 @@ class MultiHeadAttentionLayer(nn.Module):
 
     def forward(self, h):
         """
-        Args:
-            h (Tensor): Input tensor of shape (batch_size, num_nodes, embed_dim).
+        参数:
+            h (Tensor): 输入张量，形状为 (批次大小, 节点数量, 嵌入维度)。
 
-        Returns:
-            Tensor of shape (batch_size, num_nodes, embed_dim).
+        返回:
+            形状为 (批次大小, 节点数量, 嵌入维度) 的张量。
         """
         batch_size, num_nodes, embed_dim = h.shape
 
-        # Multi-Head Attention with skip connection and batch norm
+        # 带跳跃连接和批归一化的多头注意力
         h_res = h
         h_mha = self.mha(h)
 
-        # Reshape for BatchNorm1d: (batch_size * num_nodes, embed_dim)
+        # 为BatchNorm1d重塑形状: (批次大小 * 节点数量, 嵌入维度)
         h = h_res.view(-1, embed_dim) + h_mha.view(-1, embed_dim)
         h = self.bn1(h).view(batch_size, num_nodes, embed_dim)
 
-        # Feed-Forward with skip connection and batch norm
+        # 带跳跃连接和批归一化的前馈网络
         h_res = h
         h_ff = self.ff(h)
 
@@ -108,18 +108,18 @@ class MultiHeadAttention(nn.Module):
         K = self.W_k(h)
         V = self.W_v(h)
 
-        # Reshape and transpose for multi-head attention
+        # 为多头注意力重塑和转置
         Q = Q.view(batch_size, num_nodes, self.num_heads, self.head_dim).transpose(1, 2)
         K = K.view(batch_size, num_nodes, self.num_heads, self.head_dim).transpose(1, 2)
         V = V.view(batch_size, num_nodes, self.num_heads, self.head_dim).transpose(1, 2)
 
-        # Scaled dot-product attention
+        # 缩放点积注意力
         scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.head_dim)
         attn = torch.softmax(scores, dim=-1)
 
         context = torch.matmul(attn, V)
 
-        # Concatenate heads and apply final linear layer
+        # 拼接多头并应用最终的线性层
         context = context.transpose(1, 2).contiguous().view(batch_size, num_nodes, embed_dim)
 
         return self.W_o(context)
@@ -138,25 +138,24 @@ class FeedForward(nn.Module):
         return self.net(x)
 
 if __name__ == '__main__':
-    # Hyperparameters from the paper
-    INPUT_DIM = 7 # Location(2) + Demand(1) + ServiceTime(1) + TimeWindow(2) + is_depot(1)
+    # 论文中的超参数
+    INPUT_DIM = 7 # 位置(2) + 需求(1) + 服务时间(1) + 时间窗(2) + 是否是仓库(1)
     EMBED_DIM = 128
     NUM_HEADS = 8
     NUM_LAYERS = 3
 
-    # Example usage
+    # 示例用法
     encoder = Encoder(input_dim=INPUT_DIM, embed_dim=EMBED_DIM, num_heads=NUM_HEADS, num_layers=NUM_LAYERS)
 
-    # Dummy input: batch_size=4, num_nodes=21 (1 depot + 20 customers)
+    # 虚拟输入: 批次大小=4, 节点数量=21 (1个仓库 + 20个客户)
     dummy_input = torch.rand(4, 21, INPUT_DIM)
 
     node_embeds, graph_embed = encoder(dummy_input)
 
-    print("Encoder test:")
-    print("Input shape:", dummy_input.shape)
-    print("Node embeddings shape:", node_embeds.shape)
-    print("Graph embedding shape:", graph_embed.shape)
+    print("编码器测试:")
+    print("输入形状:", dummy_input.shape)
+    print("节点嵌入形状:", node_embeds.shape)
+    print("图嵌入形状:", graph_embed.shape)
     assert node_embeds.shape == (4, 21, EMBED_DIM)
     assert graph_embed.shape == (4, EMBED_DIM)
-    print("Test passed!")
-
+    print("测试通过!")

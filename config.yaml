@@ -13,3 +13,7 @@ training_params:
   batches_per_epoch: 100 # Simplified from 640000 instances / 256 batch_size
   batch_size: 32       # Reduced for faster local testing, paper uses 256
 
+scheduler_params:
+  lr_decay_step_size: 1
+  lr_decay_gamma: 0.98
+
