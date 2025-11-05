@@ -1,0 +1,1167 @@
+16410 IEEE TRANSACTIONS ON INTELLIGENT TRANSPORTATION SYSTEMS, VOL. 23, NO. 9, SEPTEMBER 2022
+A Multi-Agent Reinforcement Learning Method
+With Route Recorders for Vehicle Routing in
+Supply Chain Management
+Lei Ren , Member, IEEE, Xiaoyang Fan ,J i nC u i, Member, IEEE, Zhen Shen , Member, IEEE,
+Yisheng Lv , Senior Member, IEEE, and Gang Xiong , Senior Member, IEEE
+Abstract— In the modern supply chain system, large-scale
+transportation tasks require the collaborative work of mul-
+tiple vehicles to be completed on time. Over the past few
+decades, multi-vehicle route planning was mainly implemented
+by heuristic algorithms. However, these algorithms face the
+dilemma of long computation time. In recent years, some machine
+learning-based methods are also proposed for vehicle route plan-
+ning, but the existing algorithms can hardly solve multi-vehicle
+time-sensitive problems. To overcome this problem, we propose a
+novel multi-agent reinforcement learning model, which optimizes
+the route length and the vehicle’s arrival time simultaneously.
+The model is based on the encoder-decoder framework. The
+encoder mines the relationship between the customer nodes
+in the problem, and the decoder generates the route of each
+vehicle iteratively. Specially, we design multiple route recorders
+to extract the route history information of vehicles and realize
+the communication between them. In the inferring phase, the
+model could immediately generate routes for all vehicles in
+a new instance. To further improve the performance of the
+model, we devise a multi-sampling strategy and obtain the
+balance boundary between computation time and performance
+improvement. In addition, we propose a simulation-based vehicle
+conﬁguration method to select the optimal number of vehicles
+in real applications. For validation, we conduct a series of
+experiments on problems with different customer amounts and
+various vehicle numbers. The results show that the proposed
+model outperforms other typical algorithms in both performance
+and calculation time.
+Manuscript received 8 July 2021; revised 24 November 2021 and
+28 January 2022; accepted 2 February 2022. Date of publication 16 February
+2022; date of current version 12 September 2022. This work was supported
+by the National Key Research and Development Program of China under
+Grant 2019YFB1705502. The Associate Editor for this article was L. Wang.
+(Corresponding author: Jin Cui.)
+Lei Ren and Xiaoyang Fan are with the School of Automation Science
+and Electrical Engineering, Beihang University, Beijing 100191, China,
+and also with the Beijing Advanced Innovation Center for Big Data-based
+Precision Medicine, Beihang University, Beijing 100191, China (e-mail:
+renlei@buaa.edu.cn; fanxiaoyang@buaa.edu.cn).
+Jin Cui is with the Research Institute for Frontier Science, Beihang Univer-
+sity, Beijing 100191, China, and also with the Ningbo Institute of Technology,
+Beihang University, Ningbo 315800, China (e-mail: jincui@buaa.edu.cn).
+Zhen Shen and Yisheng Lv are with the State Key Laboratory for Man-
+agement and Control of Complex Systems, Institute of Automation, Chinese
+Academy of Sciences, Beijing 100190, China (e-mail: zhen.shen@ia.ac.cn;
+yisheng.lv@ia.ac.cn).
+Gang Xiong is with the Beijing Engineering Research Center of Intelli-
+gent Systems and Technology, Institute of Automation, Chinese Academy
+of Sciences, Beijing 100190, China, and also with the Cloud Computing
+Center, Chinese Academy of Sciences, Dongguan 523808, China (e-mail:
+gang.xiong@ia.ac.cn).
+Digital Object Identiﬁer 10.1109/TITS.2022.3150151
+Index Terms— Vehicle routing, supply chain management,
+multi-agent reinforcement learning (MARL), route recorder.
+I. I NTRODUCTION
+L
+OGISTICS is the crucial link of the supply chain. In sup-
+ply chain management, providing goods to downstream
+companies promptly with the smallest possible cost draws a
+very large economic beneﬁt [1]. In addition, there is an essen-
+tial concept called zero inventory. Companies aspire to hold
+little or noon-hand inventory stock [2]. A good route planning
+method can both reduce transportation costs and optimize
+inventory. In reality, almost all logistics transportation prob-
+lems can be abstracted into vehicle routing problem (VRP)
+and its variants. VRPs have been widely studied for decades
+as typical combinatorial optimization problems [3].
+The objective of the original VRP is to obtain a shortest
+route to serve a set of customers with speciﬁc demands [4].
+While in the supply chain scenario, the shortest route length
+can only help upstream companies to reduce transportation
+costs. In order to make the production and sales plan of
+downstream companies proceednormally and minimize inven-
+tory costs, vehicles should complete transportation timely.
+We use the time window to represent the best arrival time
+and use the penalty for time window violation to represent the
+costs caused by early or late arrival. In addition, one vehicle
+can hardly deal with complex time window constraints and
+massive demands of customers, so multiple vehicles need to be
+applied to complete a transportation task simultaneously. How
+many vehicles are used also needs to be considered. Based
+on the above characteristics, we abstract the VRP in supply
+chain management as multiple vehicle routing problem with
+soft time windows (MVRPSTW) [5].
+Many heuristic methods have been proposed to address
+MVRPSTW and multi-agent task allocation problems. One
+class is intelligent optimization algorithms, such as genetic
+algorithm (GA) [6] and ant colony algorithm (ACO) [7],
+which solve the problem by searching the solution space
+iteratively to ﬁnd a feasible solution within an acceptable
+time. Another class is local search algorithms, including
+iterated local search (ILS) [8], tabu search [9], and large
+neighborhood search (LNS) [10]. Starting from an initial
+solution, each time the algorithm selects the best neighbor
+from the neighborhood solution space of the current solution.
+The quality of the ﬁnal solution largely depends on the initial
+1558-0016 © 2022 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission.
+See https://www.ieee.org/publications/rights/index.html for more information.
+Authorized licensed use limited to: Zhengzhou University. Downloaded on September 10,2025 at 09:03:11 UTC from IEEE Xplore.  Restrictions apply. 
+
+REN et al.: MULTI-AGENT REINFORCEMENT LEARNING METHOD WITH ROUTE RECORDERS FOR VEHICLE ROUTING 16411
+solution [11]. Construction algorithms use speciﬁc rules to
+efﬁciently generate the solution, often provide initial solutions
+for local search algorithms, such as insertion algorithm [12],
+and Clark-Wright saving algorithm [13]. Heuristic methods
+can also be used to solve multi-agent task allocation problems,
+but such methods are often computationally intensive and
+prone to fall into local optimal.
+Recently, deep reinforcement learning (DRL) has achieved
+great success in many ﬁelds [14], [15]. Beneﬁts from the
+powerful learning ability of the neural network, a well-trained
+DRL model can give the solution of a speciﬁc problem without
+massive calculation. Moreover, DRL is able to learn the
+distribution of problem data and the characteristics of solu-
+tion space, which has great potential to solve time-sensitive
+problems [16].
+DRL is also used to solve combinatorial optimization prob-
+lems. Vinyals et al. modiﬁed seq2seq model and proposed
+pointer network to solve the traveling salesman problem (TSP)
+[17]. Bello et al. combined pointer network and DRL, which
+employed reward signal to train the neural network [18].
+Nazari et al.replaced the recurrent neural network encoder of
+the pointer network with one-dimensional convolution, largely
+reducing the computational complication [19]. Zhao et al.
+used the result of DRL as the initial solution of local search
+algorithm to further improve the quality of solution [20].
+Kool et al. proposed an attention-based model (AM) to solve
+various combinatorial optimization problems [21]. Lu et al.
+proposed the learn to improve (L2I) method [22], randomly
+constructed a feasible solution and applied DRL to improve
+the initial solution. In the multi-vehicle scheduling problem,
+Zhang et al. expanded AM to multi-agent situation to solve
+MVRPSTW [23]. Yuet al. applied pointer network to online
+VRP [16]. Shiet al. proposed a DRL framework with decen-
+tralized learning and centralized decision making processes for
+ride-hailing services [24].
+However, there are still some challenges in the real supply
+chain management scenario. Firstly, an effective mechanism
+is needed to realize communication among multiple vehicles
+and to guide them to complete the delivery task collabora-
+tively. Secondly, the algorithm needs to consider the time
+window violation penalty while optimizing the route length.
+So these two optimization objectives should be appropriately
+integrated into the algorithm framework. Thirdly, for a speciﬁc
+instance, employing either too many or too few vehicles will
+increase the time window violation penalty. In real applica-
+tions, a method that can predict the optimal number of vehicles
+in advance is urgently needed.
+In this work, we propose a novel multi-agent reinforcement
+learning model with observation information fusion to address
+the above challenges. The proposed model constructs the
+route iteratively based on the encoder-decoder framework [25].
+Particularly, several gated recurrent units (GRU) are designed
+in the model for the vehicles, which are called route recorders.
+GRU could mine the spatial position information in each
+vehicle’s route history. We integrate the output of the route
+recorder into the observation space of each agent. To realize
+the communication between vehicles, another route recorder
+is adopted to extract the historical information of all vehicles.
+After ofﬂine training, our model could generate routes for
+vehicles in a new instance instantly without further training.
+Moreover, we propose a simulation-based method to ﬁnd the
+optimal vehicle number. Before task assignment, different
+numbers of vehicles are used for simulation, and the most suit-
+able number of vehicles will be selected to perform delivery.
+The main contributions of this work are summarized as
+follows:
+• We propose a multi-agent reinforcement learning model
+which incorporates multiple route recorders to solve
+MVRPSTW in supply chain management. Several route
+recorders are designed to construct the observation space
+and realize communication between multiple vehicles.
+Both the route length and the time window violation
+penalty are considered as optimization objectives in the
+model.
+• The proposed model can be used to determine the optimal
+number of vehicles for a certain problem. Through using
+different numbers of vehicles to perform simulation
+analysis in the problem, the optimal vehicle number
+and the corresponding vehicle routes are determined
+accordingly.
+• We conduct a series of experiments in various scenarios
+to verify the performance of the proposed model in
+terms of cost and calculation time. Besides, we devise
+a multi-sampling strategy to further improve the perfor-
+mance of our model and analyze the relationship between
+the improvement rate and the number of samples.
+The remainder of the paper is organized as follows. First
+of all, we will give a detailed description of the problem
+in Section II. Then we introduce each component of the
+proposed model in Section III. Section IV will evaluate the
+performance of our model by comprehensive case study.
+Finally, we conclude this paper in Section V .
+II. P
+ROBLEM STATEMENT
+In our problem deﬁnition, each problem instance includes
+as e to fNc customers, a set ofNv vehicles, and a depot. The
+locations of customers and depot are randomly generated in
+the Euclidean plane. Each customer has several characteristics
+including location (v), demand ( d), service time ( s), time
+window (e,l) so that they could be represented as a tuple
+ci = (vi ,di ,si ,ei ,li ), i ={ 1,2,..., Nc}. Each vehicle has a
+ﬁxed capacity (Q) and speed (E). The detailed information of
+variables is shown in Table I.
+A ﬂeet of identical vehicles should start from the depot and
+meet the demands of customers sequentially. Vehicles need to
+comply with the following rules:
+• The vehicles depart from the depot and return to the
+depot after visiting several customers. The sequence of
+customers visited constitutes the routes of the vehicles.
+• Routes begin and end with the depot. The depot can only
+appear at both ends of a route. Once back to the depot,
+vehicles are not allowed to visit customers again.
+• Vehicles have a maximum load, i.e. capacityQ.T h es u m
+of the demands of customers in a route should not exceed
+capacity Q.
+• Customers’ time windows are set to be soft, which means
+vehicles are allowed to visit a customer before or after the
+Authorized licensed use limited to: Zhengzhou University. Downloaded on September 10,2025 at 09:03:11 UTC from IEEE Xplore.  Restrictions apply. 
+
+16412 IEEE TRANSACTIONS ON INTELLIGENT TRANSPORTATION SYSTEMS, VOL. 23, NO. 9, SEPTEMBER 2022
+TABLE I
+VARIABLES DEFINITION
+Fig. 1. An illustration of penalty of arrival time.
+time window. Still, there will be a penalty when vehicles
+visit a customer out of the time window. The penalty
+is deﬁned as a linear function of arrival time and time
+window. Figure 1 is the illustration of the penalty.
+• Vehicles are not allowed to wait at a customer node.
+Once arrive at a customer node, vehicles should serve the
+customer immediately and leave after ﬁnishing service.
+The solution of an instance could be represented as
+R = (r
+1,r2,..., rv),W h e r eri is the ith vehicle’s route. The
+goal of the problem is to ﬁnd a solution with minimal cost.
+For a instanceP and a solutionR, the cost could be computed
+as follows:
+Length (ri |P) =
+|ri |−1∑
+j=1
+∥vri (j),v ri (j+1)∥2, (1)
+Penalty (ri |P) =
+∑
+j∈ri
+((ej −ti,j ) ∗ α ∗ ke + (ti,j −l j ) ∗ β ∗ kl ),
+(2)
+Cost (R|P) =
+Nv∑
+i=1
+(Length (ri |G) + Penalty (ri |G)), (3)
+where Length (ri |P) is the total route distance of vehiclei,
+∥·∥ 2 is ℓ2 norm, ri ( j) is the jth customer in the path of
+vehicle i. Penalty (ri |P) is the early and late penalty of route
+Fig. 2. An illustration of task allocation and routing process, different
+vehicles serve customers with similar time windows.
+i, ti,j is the time when vehicle i arrives at customer j,t h e
+travel time between two customers equals to the distance of
+them divided by the speedE of the vehicle, the arrival time of
+the current customer is equal to the arrival time of the previous
+customer plus the service time of the previous customer and
+the travel time between the two customers.α, β are early and
+late arrival penalty coefﬁcient, respectively.k
+e and kl indicate
+early or late arrival, which equal to 1 when arrival time is
+earlier or later than time window, otherwise, 0.
+In a real-world supply chain system, the time windows of
+customers are often overlapped or very close. In this case,
+one vehicle can hardly deal with the time window constraints
+efﬁciently. When two customers’ time windows are very close,
+one vehicle can only choose one customer to satisfy the time
+window. According to this situation, we propose a multi-agent
+deep reinforcement learning method. Use multiple vehicles to
+provide services to different customers at the same time. The
+task allocation and routing process are depicted in Figure 2.
+III. M
+ULTI -AGENT REINFORCEMENT LEARNING MODEL
+In this section, we introduceour multi-agent deep reinforce-
+ment learning model, which includes a management module
+and a strategy module. The management module serves as the
+environment for interaction with DRL. The strategy module
+consists of an encoder, multiple route recorders, and a decoder.
+It generates the route for each vehicle according to the
+information from the management module. The architecture
+of the proposed model is drawn in Figure 3.
+During training, the management module generates problem
+instances for the strategy module to solve. After receiving the
+instances, the strategy module ﬁrst processes the customer
+information through the encoder, then constructs the state
+of agents based on the output of the encoder and the route
+recorders, and then outputs the route of the vehicle step by
+Authorized licensed use limited to: Zhengzhou University. Downloaded on September 10,2025 at 09:03:11 UTC from IEEE Xplore.  Restrictions apply. 
+
+REN et al.: MULTI-AGENT REINFORCEMENT LEARNING METHOD WITH ROUTE RECORDERS FOR VEHICLE ROUTING 16413
+step. Finally, update the parameters of the neural network in
+the strategy module according to the output solution and its
+corresponding cost value.
+A. Management Module
+The management module works as the environment of
+DRL. In addition to the role of generating problem instances,
+it should update the problem status information as the strategy
+module outputs the next destination of the vehicle and the
+vehicle ﬂeet moves. Thus a management module is essential
+to give a feasible solution. The management module generates
+extensive instances for training and validation according to a
+certain distribution. As the vehicle ﬂeet moves, this module
+updates the status of customers and vehicles. The problem
+status consists of the current location and remaining load of
+each vehicle and the customers visited.
+Once the strategy module provides the next destination to
+a vehicle, the location of the vehicle is changed to the chosen
+customer, the remaining load is updated toL
+t = Lt−1 − di ,
+where Lt is the current load,Lt−1 is the load at previous time
+step and di is the demand of chosen customeri. Due to the
+capacity constraints, Lt must be greater than 0 at each time
+step.
+In addition, to avoid generating infeasible routes, a mask
+strategy is needed to be applied to block out customers who
+are not available at current time step, including customers
+who have been visited before or whose demand exceeds the
+remaining load of the vehicle [18]. The mask strategy could
+be expressed as follows:
+M
+i,j =
+⎧
+⎪⎨
+⎪⎩
+1, if customer i has been visited or demand
+exceeds the current load of vehicle j,
+0, otherwise.
+(4a)
+M0,j =
+⎧
+⎪⎨
+⎪⎩
+1, if there are still available customers
+for vehicle j
+0, otherwise.
+(4b)
+where Mi,j is the mask for vehicle j and customer i,M0,j is
+the mask for vehicle j and the depot.
+B. Strategy Module
+The strategy module receives the problem data and mask
+information from the management module, and converts them
+into the route sequence of each vehicle. More speciﬁcally,
+we use an encoder to extract the relationship features between
+customer nodes and compute the embedding of each node and
+the entire problem context. For each vehicle, we apply a GRU
+cell as a route recorder to extract historical spatial location
+information of each vehicle. In addition, there is one more
+GRU cell that integrates historical information of all vehicles,
+called global route recorder. Then a decoder will output the
+next node of the route iteratively.
+In our coordinated multi-agent problem, all vehicles are
+homogeneous. They have the same capacity and speed, and
+collaborate to accomplish the same goal. It could be consid-
+ered that the best policy for each vehicle is the same, and the
+best policy for the entire vehicle ﬂeet is a combination of the
+best policies of each vehicle [24], [26]. Therefore, we apply
+the same policy to the scheduling of each vehicle, that is,
+sharing the parameters of the policy network of each vehicle
+[27]. The details of each part in this module are as follows.
+1) Encoder: Encoder is used to learn a representation of
+the customer nodes in the problem. We build the encoder with
+multi-head self-attention mechanism, which is similar to the
+attention model [21]. Given a set of customers and a depot,
+ﬁrst, we use linear projection to map them into a speciﬁed
+dimension as the initial embedding, i.e.,
+h
+(0)
+i = w0ci + b0 (5)
+Then we utilize multiple attention layers to calculate embed-
+ding. Similar to the transformer encoder architecture [28],
+each layer has two sub-layers. The ﬁrst sub-layer is based on
+multi-head self-attention mechanism and is called multi-head
+attention layer (MHA). The second is a simple feed forward
+operation called feed forward layer (FF). We add batch nor-
+malization (BN) and skip-connection to each sub-layer [29],
+[30]. The initial embedding is input to the attention layer, and
+the ﬁnal embedding is updated iteratively. Each multi-head
+attention layer is computed as
+head
+ℓ
+i = sof tmax ( Qℓ
+i K ℓ
+i
+T
+√
+dk
+)V ℓ
+i ,i = (1,2,..., Nh ), (6)
+ˆh(ℓ) = BN ([head ℓ
+0; head ℓ
+1; ... ; head ℓ
+Nh ]Wℓ + h(ℓ−1)),(7)
+where Nh is the number of heads, h(ℓ−1) =
+[h(ℓ−1)
+0 ; h(ℓ−1)
+1 ; ... ; h(ℓ−1)
+Nc ] is the initial embedding or
+embedding of each node from last attention layer. Ignore the
+superscript of the layer ℓ. In the layer ℓ, Qi = h(ℓ−1)
+i W Q
+i ,
+Ki = h(ℓ−1)
+i W K
+i , Vi = h(ℓ−1)
+i W V
+i . Parameter matrices
+W Q
+i ∈ Rdembed ×dq , W K
+i ∈ Rdembed ×dk , W V
+ℓ ∈ Rdembed ×dv ,
+Wℓ ∈ RNh dv×dembed . For the convenience of calculation,
+we set the same dimension forQuery, Key, Value in attention
+mechanism, i.e. dq = dk = dv = dembed /Nh ,t om a k et h e
+softmax function output a small number so that it has a
+reasonable gradient, we mu ltiply the input of the softmax
+function by 1
+√
+dk
+.
+The second sub-layer of attention layer is a simple feed
+forward layer with batch normalization and skip-connection:
+h(ℓ)
+i = BN (FF (ˆh(ℓ)
+i ) + ˆh(ℓ)
+i ), (8)
+where FF (ˆh(ℓ)
+i ) = w(ℓ)
+2 Relu (w(ℓ)
+1 ˆh(ℓ)
+i + b(ℓ)
+1 ) + b(ℓ)
+2 .
+We input the initial embedding intoNl attention layers to
+compute equations (7) and (8) for Nl times to obtain ﬁnal
+embedding h(Nl )
+i of each node. Then compute the embedding
+of the entire problem context
+h
+(Nl )
+as
+h(Nl ) = 1
+Nc + 1
+Nc∑
+i=0
+h(Nl )
+i (9)
+2) Route Recorder: In a coordinated multi-agent problem,
+several learning agents try to ﬁnd a joint solution for the
+problem. The behavior of one agent will inﬂuence the obser-
+vation of other agents in multi-agent DRL. To make every
+Authorized licensed use limited to: Zhengzhou University. Downloaded on September 10,2025 at 09:03:11 UTC from IEEE Xplore.  Restrictions apply. 
+
+16414 IEEE TRANSACTIONS ON INTELLIGENT TRANSPORTATION SYSTEMS, VOL. 23, NO. 9, SEPTEMBER 2022
+Fig. 3. Model architecture.
+agent in the model have a full observation of the global
+state information and communicate with each other, it is very
+important to add the historical route information of current
+vehicle and other vehicles into the state space. In order to
+obtain a vector representation of historical information for
+subsequent computation of the neural network, we adopt a
+GRU cell for each agent [31], which is the vehicle in our
+problem. Input the current position into the GRU cell at
+each time step to get a vector representation of historical
+information. We call the GRU cell of each vehicle a local
+route recorder, which is used to record the movement history
+of each vehicle. Moreover, there is another GRU cell to obtain
+all vehicles’ movement history information, and we name it
+as global route recorder. At each time step, we provide each
+vehicle with the movement history of itself and other vehicles
+so that they can know about what other vehicles have done.
+For details, at each time step, we input the position and
+remaining load of the vehicle and the hidden state of the local
+route recorder at the previous time step into the local route
+recorder. Then it will output a vectorH
+i
+t , which contains the
+movement history information of the vehicle. For vehicle at
+time step t, the process could be represented as:
+Ri
+t = sigmoid (ai
+t−1Wi
+ar + H i
+t−1Wi
+hr + bi
+r ), (10a)
+Zi
+t = sigmoid (ai
+t−1Wi
+az + H i
+t−1Wi
+hz + bi
+z), (10b)
+ˆH i
+t = tanh (ai
+t−1Wi
+ah + (Ri
+t ⊙ H i
+t−1)Wi
+hh + bi
+h), (10c)
+H i
+t = Zi
+t ⊙ hi
+t−1 + (1 − Zi
+t ) ⊙ ˆH i
+t , (10d)
+where ai
+t−1 ∈ R3 is current position and remaining load of
+vehicle i, H i
+t−1 ∈ Rdembed is the hidden state of GRU cell at
+previous time step,⊙ is element-wise multiplication.
+Before each vehicle chooses the next customer to visit,
+the hidden state of the local route recorder and global route
+recorder will be updated. Unlike local route recorder, at each
+time step, the location and load information of all vehicles will
+be input to global route recorder. The details of how to use
+route recorders to construct observation space for each vehicle
+will be introduced in next subsection.
+3) Decoder: Decoder generates route sequence for each
+vehicle sequentially. At each decoding stept ∈{ 1,2,..., T },
+decoder outputs the next node for each vehicle based on
+the embedding from encoder and the hidden state of route
+recorders. During the decoding process, instead of giving the
+next nodes to all vehicles simultaneously, we apply the same
+way as work done in [23] to generate the next node in the route
+for each vehicle one by one to avoid the situation where more
+than one vehicles select the same node at the same time. Given
+a problem instance P, parameterize our decoding strategy as
+θ, the calculation method for the next node of each vehicle at
+the current time stept can be expressed as
+p(r
+t
+1|P,θ) = p(rt
+1|P,θ, rt−1
+1 ,rt−1
+2 ,..., rt−1
+m−1,rt−1
+m ),
+p(rt
+2|P,θ) = p(rt
+2|P,θ, rt
+1,rt−1
+2 ,..., rt−1
+m−1,rt−1
+m ),
+...
+p(rt
+m |P,θ) = p(rt
+2|P,θ, rt
+1,rt
+2,..., rt
+m−1,rt−1
+m ), (11)
+where rt
+i is the customers who have been chosen by vehiclei
+before time stept, m is the number of vehicles.
+Next, we introduce the setting of the observation space.
+The observation space is composed of the problem context
+h
+(Nl )
+calculated by the encoder, hidden state calculated by
+local route recorder. In order to make each vehicle has a full
+observation of global state, we also add the hidden state of
+global route recorder to observation space.
+oi
+t =
+ h(Nl ) + H i
+t +
+ Hi
+t , (12)
+Authorized licensed use limited to: Zhengzhou University. Downloaded on September 10,2025 at 09:03:11 UTC from IEEE Xplore.  Restrictions apply. 
+
+REN et al.: MULTI-AGENT REINFORCEMENT LEARNING METHOD WITH ROUTE RECORDERS FOR VEHICLE ROUTING 16415
+where oi
+t the observation of vehiclei at time stept, H i
+t is the
+hidden state of local route recorder for vehicle i,
+H
+i
+t is the
+hidden state of global route recorder. In the method that uses
+the current position and load of the vehicle as state information
+[21], [23], the agent only makes decisions based on the current
+information, and avoids invalid actions through the mask
+mechanism. Regardless of the historical action information,
+under the same position and load, the output of the policy
+network is exactly the same. This is not an effective method
+in the scenario of multi-agent and considering the time window
+constraints. Adding route recorders could enable agents make
+better decisions based on historical information.
+The decoding step is similar to pointer network [17]. A sim-
+pliﬁed attention mechanism is used to calculate the probability
+of visiting the next customer. Utilize the observation of vehicle
+i as query q
+t
+i and the embedding of each node calculated at
+encoding stage as key k j for the attention mechanism [28],
+the compatibility is calculated as probabilities of vehicle i
+choosing customer j at time stept,t h a ti s ,
+qt
+i = Wq oi
+t , (13a)
+k j = Wk h(Nl )
+j , (13b)
+ui,j,t = qt
+i
+T k j
+√
+dk
+. (13c)
+Then we use the softmax function to calculate the prob-
+ability of choosing each custom er. In order to ensure that
+each customer is visited only once and the demands in a
+route do not exceed the maximum load of the vehicle, we set
+ui,j,t =− ∞ to block the customers who have been visited
+before or whose demand is greater than the current load of
+vehicle [18]. In this way, afterthe calculation of the softmax
+function, the probability of invalid action will be 0 and the sum
+of the probabilities of all actions still equals 1. The probability
+that vehicle i selects customer j at time step t is formulated
+as follow:
+p
+i,j,t = sof tmax (ui,j,t ) = eui,j,t
+∑n
+j=0 eui,j,t (14)
+Now the problem could be formulated as markov decision
+process (MDP), and the main components are deﬁned as
+follows:
+• State: Each vehicle is regarded as an agent. The
+state includes information about customers and vehicles.
+Speciﬁcally, at each time step, vehicles will obtain infor-
+mation about each customer such as location, demand,
+and time window. In addition, it can observe route his-
+tory information of itself and other vehicles from route
+recorders.
+• Action: At each time step, each vehicle will select a
+customer to provide services. After the end of an episode,
+joint actions constitute the solutionR.
+• Reward: The negative of the costCost (R|P) is consid-
+ered to be reward signal and the parameters of policy
+network are updated according to the reward signal after
+an episode.
+Algorithm 1 Training Procedure
+Input Training epoch N, number of batches in each epochB
+Output Parameter θ.
+1: Initialize parameter θ of strategy model
+2: Initialize parameter θBL = θ of baseline model
+3: for epoch = 1, 2, …, N do
+4: for batch = 1, 2, …, B do
+5: Generate training set M
+6: Compute initial embeddingh(0)
+i of customers and depot
+7: Input initial embedding to encoder to obtain the ﬁnal
+embedding of each node h(Nl )
+i and the embedding of
+the problem context
+h
+(Nl )
+8: Initialize the current location of vehicle at depot and
+set the current load L equals to capacityQ
+9: step = 0
+10: repeat
+11: for i = 1, 2, …, Nv do
+12: Input current location and load of vehicle i to local
+route recorder i and get hidden stateH i
+t
+13: Input current locations and loads of all vehicles to
+global route recorder and get hidden state
+Hi
+t
+14: Compute query qt
+i
+15: Compute probabilities of choosing next nodespi,j,t
+16: Randomly choose next nodes for vehicle i accord-
+ing to pi,j,t
+17: Update mask and vehicle state
+18: end for
+19: step = step + 1
+20: until All customers have been visited
+21: Compute Cost of solution on training instances
+22: if epoch = 1then
+23: Compute Cost BL using exponential moving average
+24: else
+25: Use baseline model to generate solution and compute
+Cost BL
+26: end if
+27: Compute gradient of training objective function and
+update parameter θ through Adam optimizer
+28: if OneSided PairedT T est(θ, θBL )< 5% then
+29: θBL = θ
+30: end if
+31: end for
+32: end for
+33: return θ
+C. Training Method
+In this work, there is no label for each problem instance,
+so we cannot use the supervised learning method to train our
+neural network. Instead, we adopt a reinforcement learning
+method to minimize the cost of the generated route to train all
+trainable variables in our model. Given a problem instanceP,
+use θ to represent the parameters in our neural network. The
+training objective is:
+J(θ|P) = E
+R∼pθ(·|P)Cost (R|P) (15)
+The trainable parameters in the neural network include the
+parameters in encoder, decoder and route recorders. To train
+Authorized licensed use limited to: Zhengzhou University. Downloaded on September 10,2025 at 09:03:11 UTC from IEEE Xplore.  Restrictions apply. 
+
+16416 IEEE TRANSACTIONS ON INTELLIGENT TRANSPORTATION SYSTEMS, VOL. 23, NO. 9, SEPTEMBER 2022
+them, we use the well-known policy gradient method [32],
+which improves our policy iteratively by an estimated gradient
+of the expected return. The gradient could be formulated as:
+∇θ J(θ|P)
+= ER∼pθ (·|P)[(Cost (R|P) − b(P))∇θ log pθ(R|P)], (16)
+where b(P) is the baseline function, which is used to estimate
+the expected cost value of different problem instances. It can
+estimate how difﬁcult a problem is and reduce the variance
+of training process to accelerate the speed of convergence
+[21]. pθ(R|P) is the probability of generating solutionR for
+instance P, which is related to the probabilitypi,j,t at each
+decoding step.
+When training on a batch of instances, the gradient of the
+function could be computed as the average value of Monte
+Carlo sampling in the batch:
+∇θ J(θ) = 1
+B
+B∑
+i=0
+[(Cost (Ri |Pi ) − b(Pi ))∇θ log pθ(Ri |Pi )],
+(17)
+where B is the batch size.
+During the training process, according to the probability
+calculated by equation 14, the next node for each vehicle is
+selected randomly. To reduce the variance, we adopt another
+model as the baseline function, which has the same structure as
+the strategy model [33]. The baseline model generates routes
+by greedy strategy, in other words, choose the routes with
+highest probability. Before training, the parameters of strategy
+model θ and baseline modelθ
+BL are set to be the same, and
+then update periodically. Once updating the parameters of the
+strategy model, we compute the result of the strategy model
+and baseline model, and replaceθBL with θ when their t-test
+has conﬁdence of 95%.
+We train our model for several epochs, each epoch has
+several batches of instances. At the ﬁrst epoch, we utilize the
+exponential moving average as a warm-up baseline, Which is
+calculated by:
+b =
+⎧
+⎨
+⎩
+1
+B
+∑B
+i=0 Cost (Ri |Pi ),training on ﬁrst batch,
+βb′ + (1 − β) 1
+B
+∑B
+i=0 Cost (Ri |Pi ),otherwise,
+(18)
+where B is number of instances in each batch,b′ is the baseline
+value in last batch. The training procedure of our model is
+s h o w ni nA l g o r i t h m1 .
+IV . CASE STUDIES
+To evaluate the performance of our model, we conduct
+a series of experiments and compare the cost and run time
+with other methods. The experiment includes problems with
+different numbers of customers and vehicles. The instances for
+training and validation are generated according to a speciﬁc
+distribution. In addition, we devise a multi-sampling strategy
+to further improve the performance of our model, and analyze
+the relationship between the number of samples, run time and
+performance improvement. Our computational experiments are
+TABLE II
+SETTING OF PARAMETERS
+conducted on server with a conﬁguration of Intel(R) Xeon(R)
+CPU E5-2650v4 at 2.20GHz and 64GB RAM. Nvidia TITAN
+XP GPU is used to accelerate the training process.
+A. Experimental Setting
+1) Problem Setting:We generate the depot and customers’
+locations uniformly within a range of[0,1]×[0,1]. Time win-
+dow length of each customer is randomly generated from 0.1 to
+0.2 uniformly. Service time of each customer is randomly
+generated uniformly from 0.1 to 0.2. Early penalty coefﬁcient
+α is set to 0.5. Considering the consequences of being late are
+more serious, late penalty coefﬁcientβ is set to 2. We conduct
+experiments on three kinds of problem scale with customer
+number of 20, 50 and 100. The vehicle capacity and early
+time of time windows are designed according to the number
+of customers. The customer’s demand is randomly generated
+based on the number of vehicles. The detailed settings of the
+above three parameters are listed in Table II.
+2) Decoding Strategy:When comparing with other methods
+to verify the performance of our model, at each decoding
+step, we use a greedy strategy to choose the next node with
+maximum probability and get a deterministic solution.
+To further improve the performance of our model, we use
+a multi-sampling strategy. At each step of choosing the next
+node, we randomly select the next node based on the proba-
+bility of the node. Because thenode sequence in a solution is
+randomly generated according to probability, this strategy is
+likely to develop different solutions every time we input the
+same instance to the model. Each solution is called a sample.
+We use this strategy to generate a set of different solutions for
+the same instance. Then we evaluate the cost of each sample
+and apply the solution with minimal cost.
+3) Baselines: Several baseline methods are used to com-
+pare with our method in terms of performance and calcula-
+tion time. Including Nearest Insertion, Random Insertion and
+GA. Google OR-tools is an open source software used to
+solve combinatorial optimization problems, which could solve
+multi-agent problem with constraints. It is often used as a
+baseline method in related works and perform well, so we
+also adopt it. In GA, population size is 200, cross over rate
+is 0.8, mutation rate is 0.1. We set the maximum epoch to
+1000. The process will stop when the maximum epoch is
+reached or the best solution remains unchanged for 20 epochs.
+For Google OR-Tools, we use the automatically selected ﬁrst
+solution strategy and Local search options. We run all baseline
+algorithms on CPUs with 24 processes simultaneously.
+4) Hyperpemeters: In our model, we set the initial embed-
+ding dimensions to 128. Dimensions of query, key and value
+Authorized licensed use limited to: Zhengzhou University. Downloaded on September 10,2025 at 09:03:11 UTC from IEEE Xplore.  Restrictions apply. 
+
+REN et al.: MULTI-AGENT REINFORCEMENT LEARNING METHOD WITH ROUTE RECORDERS FOR VEHICLE ROUTING 16417
+TABLE III
+RESULTS OF COMPARATIVE EXPERIMENT
+of attention mechanism are also set to 128. Encoder has
+3 attention layers, each multi-head attention layer has 8 heads.
+During training stage, we train our model for 100 epochs.
+In each epoch, 640000 instances are randomly generated for
+training. The batch size is set to 256. The model is trained
+with Adam optimizer and the learning rate is 10
+−4 [34].
+B. Experiment Results
+The results of comparative experiment for problem of differ-
+ent numbers of customers and vehicles are shown in Table III.
+Where nc, nv are the number of customers and vehicles,
+respectively. We run our model and other baseline algorithms
+to solve 1000 instances, and calculate the average cost and
+total computation time of eachmethod. Column “Time” is the
+total time consumption of solving 1000 instances and its unit
+is seconds. The best result is set as gap.
+For all instances, our method could achieve a better result
+than other algorithms and the time consumption is quite
+small. OR-Tools is second to our method and better than GA.
+Insertion methods failed to make the route as short as possible
+while reducing the penalty of the time window as much as
+possible, the results are much worse than other methods.
+In instances of small scale problem, OR-Tools and GA
+have similar results and could achieve performance close to
+our method. However, as the scale of problem growing large,
+the gap between these algorithms and ours becomes larger
+and larger. The performance of GA is also gradually worse
+than OR-Tools. The gap between the proposed algorithm and
+others is huge on large problem scale. On the one hand, it is
+because the solution space growing large. On the other hand,
+because we set strict time window constraints and large penalty
+coefﬁcients so that in large-scale problems, the gap between
+different solutions will be very huge in value. For example,
+in the case of 100 customers and 2 vechicles, the cost at the
+early stage of training is about 30 times larger than that after
+convergence.
+As the problem scale grows large, our method’s calcu-
+lation time remains at a small value, almost unchanged.
+While the time consumption of other methods is sensitive
+to problem scale, especially GA. The calculation time of
+GA on 1000 instances becomes unacceptable under large-
+scale problems. Under a certain problem scale, the time
+consumption of OR-Tools, GA and our method stay unchanged
+as the number of vehicles changes. While calculation time
+of insertion methods decreases as the number of vehicles
+increases. Because each time choose a node, we insert it into
+the route of one of the vehicles, the more vehicles we use,
+the shorter the route length of each vehicle would be and the
+computational complexity will be smaller.
+There is an interesting phenomenon in the results: in the
+instance of 20 customers, our method uses 2 vehicles could
+get a better result than using 3 vehicles. In the instance of
+50 customers, the results obtained with 3 vehicles are better
+than the others. In the instance of 100 customers, the best
+result is obtained by using 4 vehicles. For all instances with
+the same number of customers, we set the same time window
+constraints. Too few vehicles can hardly deal with the time
+window constraints and cause late penalties. On the contrary,
+using too many vehicles can serve all customers in a shorter
+time, but it will cause more early penalties because we do
+not allow vehicles to stay at a node and must move to the
+next node after serving a customer. Using a suitable number
+of vehicles can strike a balance between early and late arrivals
+Authorized licensed use limited to: Zhengzhou University. Downloaded on September 10,2025 at 09:03:11 UTC from IEEE Xplore.  Restrictions apply. 
+
+16418 IEEE TRANSACTIONS ON INTELLIGENT TRANSPORTATION SYSTEMS, VOL. 23, NO. 9, SEPTEMBER 2022
+Fig. 4. Cost curves of training process.
+TABLE IV
+RESULTS OF USING MULTI -SAMPLING STRATEGY
+and get better results. In practical applications, this method can
+be adopted, using different numbers of vehicles for simulation
+experiments to obtain the most suitable number of vehicles
+and their routes before assigning routes to vehicles.
+The cost of other algorithms becomes smaller when using
+more vehicles, probably because using more vehicles can
+easily get a better result when the solution is not so good.
+In order to verify our conjecture, we draw the cost curves of
+training process of our method in Figure 4. It could be seen
+that in the early stage of training, the policy of our model
+has not reached the optimal, using more vehicles can achieve
+a smaller cost, but as the training progresses, the cost at the
+ﬁnal convergence may not be smaller.
+C. Experiment Results With Multi-Sampling
+In order to further improve the performance of our model,
+we devise a multi-sampling strategy. The result is shown in
+TABLE III. The number after “Sample” indicates the number
+of samples taken when we use the strategy. Experiments
+are conducted on a single GPU and run time is calculated.
+It could be seen that utilizing the multi-sampling strategy
+to generate multiple solutions and apply the best one could
+achieve a better result than using the greedy strategy. Com-
+pared with the greedy strategy, when sampling 100 samples,
+the improvement is signiﬁcant, but as the number of samples
+increases, the improvement effect gradually weakens. We draw
+the relationship curve between the performance improvement
+and computation time of each problem scale in Figure 5.
+In problems of each scale, the curve trends of using different
+numbers of vehicles are similar. After the computation time
+reaches a certain value, the improvement effect will become
+very weak. In the problem with 20 customers, the curve is
+almost parallel to the coordinate axis when computation time
+is longer than 100. Taking more samples has little effect on
+the improvement. This phenomenon also exists on other scale
+Authorized licensed use limited to: Zhengzhou University. Downloaded on September 10,2025 at 09:03:11 UTC from IEEE Xplore.  Restrictions apply. 
+
+REN et al.: MULTI-AGENT REINFORCEMENT LEARNING METHOD WITH ROUTE RECORDERS FOR VEHICLE ROUTING 16419
+Fig. 5. Relationship curves between performance improvement and calculation time.
+of problems. By analyzing the results under different problem
+scale, we found that the number of samples of 1000 is the
+most suitable for this problem, which could keep a balance
+between computation time and performance improvement.
+V. CONCLUSION
+In this paper, we ﬁrst propose a new multi-agent rein-
+forcement learning method to solve vehicle routing in the
+supply chain management, which could solve the problem
+of overlapping customer time windows in the situation and
+consider the overall interests of upstream and downstream
+companies. Our route planning algorithm mainly consists of
+three parts. A self-attention mechanism based encoder could
+extract and encode the information of each customer and the
+entire problem. Multiple route recorders are adopted to record
+the historical information of each vehicle and ensure that each
+vehicle has a full observation of the state and communicates
+with other vehicles. A decoder is used to generate the routes
+according to the output of encoder and route recorders. Since
+the supervised learning method needs massive data with labels
+that are difﬁcult to obtain, we use the reinforcement learning
+method to train our neural network. To reduce the variance
+during training process, we adopt a baseline similar to self-
+critic [33]. In addition, we propose a simulation-based method
+to determine the optimal number of vehicles. A multi-sampling
+strategy is also devised to improve our model’s performance.
+To evaluate the performance of our algorithm, we generate
+various instances of different numbers of customers and vehi-
+cles according to the certain distribution and conduct compar-
+ative experiments with other algorithms. The result shows that
+our algorithm is superior to other algorithms in performance
+and calculation time, which indicates that algorithms based
+on neural networks can solve problems with soft constraints
+very well. After training, the computation time is signiﬁcantly
+shorter than other algorithms, and it is more agile and ﬂexible
+to solve problems in reality. By sampling different numbers
+of samples using the multi-sampling strategy, we found the
+appropriate number of samples to balance the computation
+time and performance improvement.
+In the future research on solving vehicle routing problems
+with machine learning-based methods, some problems still
+need to be resolved. We only studied the problems with the
+linear penalty function. In practical applications, depending on
+the situation, other types of penalty functions may be be more
+practical, and the research on other types of penalty functions
+will be very meaningful. In our work, the number of vehicles
+is set manually, a method that could automatically choose the
+most suitable number of vehicles for different instances is still
+needed. Besides, in real world, the routing problem is dynamic,
+customers’ request will change over time. It is essential to
+develop a method that could solve dynamic situation.
+R
+EFERENCES
+[1] R. J. V okurka and R. R. Lummus, “The role of just-in-time in supply
+chain management,” Int. J. Logist. Manag., vol. 11, no. 1, pp. 89–98,
+2000.
+[2] R. W. Hall and R. A. Hall,Zero Inventories. Burr Ridge, IL, USA: Irwin
+Professional, 1983.
+[3] G. Kim, Y . S. Ong, C. K. Heng, P. S. Tan, and N. A. Zhang, “City vehicle
+routing problem (City VRP): A review,” IEEE Trans. Intell. Transp.
+Syst., vol. 16, no. 4, pp. 1654–1666, Aug. 2015.
+[4] P. Toth and D. Vigo,The Vehicle Routing Problem. Philadelphia, PA,
+USA: Society for Industrial and Applied Mathematics, 2002.
+[5] H. C. Lau, M. Sim, and K. M. Teo, “Vehicle routing problem with time
+windows and a limited number of vehicles,”Eur. J. Oper. Res., vol. 148,
+no. 3, pp. 559–569, Aug. 2003.
+[6] A. Király and J. Abonyi, “Redesign of the supply of mobile mechanics
+based on a novel genetic optimization algorithm using Google maps
+API,” Eng. Appl. Artif. Intell., vol. 38, pp. 122–130, Feb. 2015.
+[7] M. Dorigo, V . Maniezzo, and A. Colorni, “Ant system: Optimization
+by a colony of cooperating agents,”IEEE Trans. Syst., Man, Cybern.
+B, Cybern., vol. 26, no. 1, pp. 29–41, Oct. 1996.
+[8] T. Ibaraki, S. Imahori, K. Nonobe, K. Sobue, T. Uno, and M. Yagiura,
+“An iterated local search algorithm for the vehicle routing problem with
+convex time penalty functions,”Discrete Appl. Math., vol. 156, no. 11,
+pp. 2050–2069, Jun. 2008.
+[9] A. Lim and F. Wang, “A smoothed dynamic tabu search embedded
+GRASP for m-VRPTW,” inProc. Int. Conf. Tools Artif. Intell., 2004,
+pp. 704–708.
+[10] P. Shaw, “Using constraint programming and local search methods
+to solve vehicle routing problems,” in Proc. Int. Conf. Princ. Pract.
+Constraint Program., 1998, pp. 417–431.
+[11] M. Zirour, “Vehicle routing problem: Models and solutions,”J. Qual.
+Meas. Anal., vol. 4, no. 1, pp. 205–218, 2008.
+[12] S. Joshi and S. Kaur, “Nearest neighbor insertion algorithm for solving
+capacitated vehicle routing problem,” in Proc. Int. Conf. Comput.
+Sustain. Global Develop., 2015, pp. 86–88.
+[13] G. Clarke and J. W. Wright, “Scheduling of vehicles from a central depot
+to a number of delivery points,”Oper. Res., vol. 12, no. 4, pp. 568–581,
+1964.
+[14] D. Silver et al., “Mastering the game of Go with deep neural networks
+and tree search,”Nature, vol. 529, no. 7587, pp. 484–489, 2016.
+[15] V . Mnihet al., “Human-level control through deep reinforcement learn-
+ing,” Nature, vol. 518, pp. 529–533, Oct. 2015.
+[16] J. J. Q. Yu, W. Yu, and J. Gu, “Online vehicle routing with neural
+combinatorial optimization and deep reinforcement learning,” IEEE
+Trans. Intell. Transp. Syst., vol. 20, no. 10, pp. 3806–3817, Oct. 2019.
+[17] O. Vinyals, M. Fortunato, and N. Jaitly, “Pointer networks,” 2015,
+arXiv:1506.03134.
+[18] I. Bello, H. Pham, Q. V . Le, M. Norouzi, and S. Bengio,
+“Neural combinatorial optimization with reinforcement learning,” 2016,
+arXiv:1611.09940.
+[19] M. Nazari, A. Oroojlooy, L. V . Snyder, and M. Taká, “Rein-
+forcement learning for solving th e vehicle routing problem,” 2018,
+arXiv:1802.04240.
+[20] J. Zhao, M. Mao, X. Zhao, and J. Zou, “A hybrid of deep reinforcement
+learning and local search for the vehicle routing problems,”IEEE Trans.
+Intell. Transp. Syst., vol. 22, no. 11, pp. 7208–7218, Nov. 2020.
+Authorized licensed use limited to: Zhengzhou University. Downloaded on September 10,2025 at 09:03:11 UTC from IEEE Xplore.  Restrictions apply. 
+
+16420 IEEE TRANSACTIONS ON INTELLIGENT TRANSPORTATION SYSTEMS, VOL. 23, NO. 9, SEPTEMBER 2022
+[21] W. Kool, H. van Hoof, and M. Welling, “Attention, learn to solve routing
+problems,” 2018,arXiv:1803.08475.
+[22] H. Lu, X. Zhang, and S. Yang, “A learning-based iterative method for
+solving vehicle routing problems,” inProc. Int. Conf. Learn. Represent.,
+2019, pp. 1–15.
+[23] K. Zhang, F. He, Z. Zhang, X. Lin, and M. Li, “Multi-vehicle routing
+problems with soft time windows: A multi-agent reinforcement learn-
+ing approach,” Transp. Res. Pt. C-Emerg. Technol., vol. 121, 2020,
+Art. no. 102861.
+[24] J. Shi, Y . Gao, W. Wang, N. Yu, andP. A. Ioannou, “Operating electric
+vehicle ﬂeet for ride-hailing services with reinforcement learning,”IEEE
+Trans. Intell. Transp. Syst., vol. 21, no. 11, pp. 4822–4834, Nov. 2020.
+[25] I. Sutskever, O. Vinyals, and Q. V. Le, “Sequence to sequence learning
+with neural networks,” 2014,arXiv:1409.3215.
+[26] J. K. Gupta, M. Egorov, and M. Kochenderfer, “Cooperative multi-agent
+control using deep reinforcement learning,” in Proc. Int. Joint Conf.
+Auton. Agents Multiagent Syst., 2017, pp. 66–83.
+[27] J. N. Foerster, Y . M. Assael, N. de Freitas, and S. Whiteson, “Learning
+to communicate with deep multi-agent reinforcement learning,” 2016,
+arXiv:1605.06676.
+[28] A. Vaswani et al., “Attention is all you need,” 2017,arXiv:1706.03762.
+[29] S. Ioffe and C. Szegedy, “Batch normalization: Accelerating deep
+network training by reducing internal covariate shift,” inProc. Int. Conf.
+Machin. Learn., 2015, pp. 448–456.
+[30] K. He, X. Zhang, S. Ren, and J . Sun, “Deep residual learning for
+image recognition,” inProc. IEEE Conf. Comput. Vis. Pattern Recognit.,
+Oct. 2016, pp. 770–778.
+[31] K. Cho et al., “Learning phrase representations using RNN encoder-
+decoder for statistical machine translation,” 2014,arXiv:1406.1078.
+[32] R. J. Williams, “Simple statistical gradient-following algorithms for
+connectionist reinforcement learning,” Mach. Learn., vol. 8, nos. 3–4,
+pp. 229–256, 1992.
+[33] S. J. Rennie, E. Marcheret, Y .Mroueh, J. Ross, and V . Goel, “Self-
+critical sequence training for image captioning,” inProc. IEEE Conf.
+Comput. Vis. Pattern Recognit., 2017, pp. 7008–7024.
+[34] D. P. Kingma and J. Ba, “Adam: A method for stochastic optimization,”
+2014, arXiv:1412.6980.
+Lei Ren (Member, IEEE) received the B.E. and
+M.E. degrees from Shandong University in 2002 and
+2005, respectively, and the Ph.D. degree from
+the Chinese Academy of Sciences, Beijing, China,
+in 2009. He is currently a Professor and the Deputy
+Head of the Cloud Manufacturing Research Center,
+School of Automation Science and Electrical Engi-
+neering, Beihang University, and a Senior Research
+Scientist with the Engineering Researching Center
+of Complex Product Advanced Manufacturing Sys-
+tems, Ministry of Education, China. His research
+interests include industrial big data, industrial AI, and cloud manufacturing.
+Xiaoyang Fan is currently pursuing the M.S. degree
+with the School of Automation Science and Electri-
+cal Engineering, Beihang University, Beijing, China.
+His research interests include industry intelligence,
+deep reinforcement learning, and combinatorial
+optimization.
+Jin Cui (Member, IEEE) received the B.Eng. degree
+from the Taiyuan University of Technology, Taiyuan,
+China, in 2013, and the Ph.D. degree from Beihang
+University, Beijing, China, in 2019. He is currently
+an Assistant Professor with the Research Institute
+for Frontier Science, Beihang University. His main
+research interests are in the areas of intelligent man-
+ufacturing, digital twin, uncertainty quantiﬁcation,
+prognostic and health management.
+Zhen Shen (Member, IEEE) received the B.S.E. and
+Ph.D. degrees from Tsinghua University, Beijing,
+China, in 2004 and 2009, respectively. He was a
+Visiting Scholar with the Department of Manufac-
+turing Engineering and the Center for Information
+and Systems Engineering, Boston University, USA,
+from October 2007 to April 2008. In 2009, he started
+doing research work as an Assistant Professor with
+the State Key Laboratory of Management and Con-
+trol for Complex Systems, Institute of Automation,
+CAS. In 2012, he becomes an Associate Professor
+with the State Key Laboratory for Management and Control of Complex
+Systems, China. His research interests are intelligent manufacturing, 3D
+printing, performance evaluation and optimization of complex systems, and
+ordinal optimization.
+Yisheng Lv (Senior Member, IEEE) received the
+B.E. and M.E. degrees from the Harbin Institute
+of Technology in 2005 and 2007, respectively, and
+the Ph.D. degree from the Chinese Academy of
+Sciences, Beijing, China, in 2010. He is currently an
+Associate Professor with the State Key Laboratory
+of Management and Control for Complex Systems,
+Institute of Automation, Chinese Academy of Sci-
+ences. He is also with the Qingdao Academy of
+Intelligent Industries. His research interests include
+trafﬁc data analysis, deep learning, machine learn-
+ing, and parallel trafﬁc management and control systems.
+Gang Xiong (Senior Member, IEEE) received the
+B.Eng. and M.Eng. degrees from the Xi’an Univer-
+sity of Science and Technology, Xi’an, China, in
+1991 and 1994, respectively, and the Ph.D. degree
+from Shanghai Jiao Tong University, Shanghai,
+China, in 1996. From 1996 to 1998, he was a
+Post-Doctoral Researcher and an Associate Scien-
+tist with Zhejiang University, Hangzhou, China.
+From 1998 to 2001, he was a Senior Research
+Fellow with the Tampere University of Technology,
+Tampere, Finland. From 2001 to 2007, he was a
+Specialist and the Project Manager with Nokia Corporation, Finland. In 2007,
+he was a Senior Consultant and the Team Leader with Accenture and Chevron,
+USA. In 2008, he was the Deputy Director of the Informatization Ofﬁce,
+Chinese Academy of Science (CAS), Beijing, China. In 2009, he started
+his present position as a Research Scientist with the State Key Laboratory
+of Management and Control for Complex Systems, Institute of Automation,
+CAS. In 2011, he became the Deputy Director of the Cloud Computing
+Center, CAS. His research interests include parallel control and management,
+modeling and optimization of complex systems, cloud computing and big
+data, intelligent manufacturing, and intelligent transportation systems.
+Authorized licensed use limited to: Zhengzhou University. Downloaded on September 10,2025 at 09:03:11 UTC from IEEE Xplore.  Restrictions apply. 

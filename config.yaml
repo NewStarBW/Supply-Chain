@@ -1,0 +1,15 @@
+# Model and training hyperparameters based on the paper
+model_params:
+  input_dim: 6      # Features: location(2) + demand(1) + service_time(1) + time_window(2)
+  embed_dim: 128
+  num_heads: 8
+  num_layers: 3
+  num_customers: 20 # Can be 20, 50, 100
+  num_vehicles: 2   # Can be 2, 3, 4, 5
+
+training_params:
+  learning_rate: 0.0001 # 1e-4
+  num_epochs: 100
+  batches_per_epoch: 100 # Simplified from 640000 instances / 256 batch_size
+  batch_size: 32       # Reduced for faster local testing, paper uses 256
+
