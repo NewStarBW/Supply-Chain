@@ -25,8 +25,8 @@ class PolicyNetwork(nn.Module):
         self.decoder = Decoder(embed_dim, num_heads)
 
         # --- 路径记录器 ---
-        # 每辆车的局部记录器
-        local_recorder_input_dim = 3 # 位置(2) + 负载(1)
+        # 每辆车的局部记录器，加入当前时间（归一化）作为额外一维
+        local_recorder_input_dim = 4 # 位置(2) + 负载(1) + 当前时间(1)
         self.local_recorders = nn.ModuleList(
             [RouteRecorder(local_recorder_input_dim, embed_dim) for _ in range(num_vehicles)]
         )
@@ -35,61 +35,55 @@ class PolicyNetwork(nn.Module):
         global_recorder_input_dim = local_recorder_input_dim * num_vehicles
         self.global_recorder = RouteRecorder(global_recorder_input_dim, embed_dim)
 
-    def forward(self, problem_features, vehicle_states, recorder_hidden_states, mask):
+    def forward(self, problem_features, vehicle_states, recorder_hidden_states, mask, sequential_vehicle_idx=None):
         """
-        为所有车辆执行一个解码步骤。
-        注意：在论文中，车辆在一个步骤内是顺序解码的。
-              此实现为提高效率简化为并行步骤，
-              但在训练/推理层面需要一个顺序循环。
+        为所有车辆或单个车辆执行一个解码步骤。
 
         参数:
-            problem_features (Tensor): 所有节点的特征，形状 (批次大小, 节点数量, 输入维度)。
-            vehicle_states (Tensor): 所有车辆的当前状态 (位置, 负载)，
-                                     形状 (批次大小, 车辆数量, 3)。
-            recorder_hidden_states (tuple): 包含 (local_h, global_h) 的元组。
-                                            local_h 形状: (批次大小, 车辆数量, 嵌入维度)
-                                            global_h 形状: (批次大小, 嵌入维度)
-            mask (Tensor): 每辆车无效节点的掩码，
-                           形状 (批次大小, 车辆数量, 节点数量)。
+            problem_features (Tensor): 所有节点的特征。
+            vehicle_states (Tensor): 所有车辆的当前状态。
+            recorder_hidden_states (tuple): (local_h, global_h)。
+            mask (Tensor): 车辆的掩码。
+            sequential_vehicle_idx (int, optional): 如果提供，则仅为该索引的车辆解码。默认为None。
 
         返回:
-            log_probs (Tensor): 每辆车的对数概率，
-                                形状 (批次大小, 车辆数量, 节点数量)。
-            next_hidden_states (tuple): 更新后的隐藏状态 (next_local_h, next_global_h)。
+            log_probs (Tensor): 对数概率。
+            next_hidden_states (tuple): 更新后的隐藏状态。
         """
         batch_size, num_nodes, _ = problem_features.shape
         local_h, global_h = recorder_hidden_states
 
         # --- 编码器 ---
-        # 这通常每个问题实例只执行一次
         node_embeddings, graph_embedding = self.encoder(problem_features)
 
         # --- 路径记录器更新 ---
-        next_local_h = []
+        next_local_h_list = []
         for i in range(self.num_vehicles):
             h_prev = local_h[:, i, :]
             vehicle_state = vehicle_states[:, i, :]
             h_next = self.local_recorders[i](vehicle_state, h_prev)
-            next_local_h.append(h_next.unsqueeze(1))
-
-        next_local_h = torch.cat(next_local_h, dim=1)
+            next_local_h_list.append(h_next.unsqueeze(1))
+        next_local_h = torch.cat(next_local_h_list, dim=1)
 
         all_vehicle_states = vehicle_states.view(batch_size, -1)
         next_global_h = self.global_recorder(all_vehicle_states, global_h)
 
         # --- 解码器 ---
-        log_probs = []
-        for i in range(self.num_vehicles):
-            # 公式 12: 构建观测向量
+        if sequential_vehicle_idx is not None:
+            # --- 顺序解码：仅为一个车辆计算 ---
+            i = sequential_vehicle_idx
             observation = graph_embedding + next_local_h[:, i, :] + next_global_h
-
             vehicle_mask = mask[:, i, :]
-
-            # 获取当前车辆的对数概率
-            lp = self.decoder(observation, node_embeddings, vehicle_mask)
-            log_probs.append(lp.unsqueeze(1))
-
-        log_probs = torch.cat(log_probs, dim=1)
+            log_probs = self.decoder(observation, node_embeddings, vehicle_mask)
+        else:
+            # --- 并行解码：为所有车辆计算（保留用于可能的未来用途）---
+            log_probs_list = []
+            for i in range(self.num_vehicles):
+                observation = graph_embedding + next_local_h[:, i, :] + next_global_h
+                vehicle_mask = mask[:, i, :]
+                lp = self.decoder(observation, node_embeddings, vehicle_mask)
+                log_probs_list.append(lp.unsqueeze(1))
+            log_probs = torch.cat(log_probs_list, dim=1)
 
         return log_probs, (next_local_h, next_global_h)
 

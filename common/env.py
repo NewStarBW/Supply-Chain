@@ -126,46 +126,56 @@ class Env:
         return dist / self.problem.speeds[vehicle_idx]
 
     def calculate_costs(self):
-        """
-        计算当前解（路径）的总成本。
-        遵循论文中的公式(1), (2), (3)，使用精确的时间记录。
+        """计算当前解（路径）的总成本及其构成。
+
+        返回:
+            total_cost (float): 路径总长度 + 时间窗惩罚。
+            total_length (float): 路径总长度。
+            total_penalty (float): 时间窗惩罚（早到 + 晚到）。
+            total_early (float): 早到惩罚总和。
+            total_late (float): 晚到惩罚总和。
         """
         total_length = 0.0
         total_penalty = 0.0
+        total_early = 0.0
+        total_late = 0.0
 
-        alpha = 0.5 # 早到惩罚系数
-        beta = 2.0  # 晚到惩罚系数
+        alpha = 0.5  # 早到惩罚系数
+        beta = 2.0   # 晚到惩罚系数
 
         for i in range(self.num_vehicles):
             route = self.routes[i]
-            if len(route) <= 1: # 空路径或只有仓库
+            if len(route) <= 1:  # 空路径或只有仓库
                 continue
 
             # --- 计算路径长度 ---
             if len(route) > 1:
                 route_locations = self.problem.locations[route]
-                total_length += torch.sum(torch.norm(route_locations[1:] - route_locations[:-1], p=2, dim=1))
+                total_length += torch.sum(
+                    torch.norm(route_locations[1:] - route_locations[:-1], p=2, dim=1)
+                )
 
             # --- 使用预先记录的到达时间计算时间惩罚 ---
-            # route列表包含起始仓库，但arrival_times列表不包含，
-            # 因为我们只记录到*下一个*节点的到达时间。
-            # 所以，arrival_times[i][j] 对应于 route[j+1] 的到达时间。
-            customer_route_part = route[1:] # 访问仓库之后的节点
-
+            customer_route_part = route[1:]  # 去掉起始仓库
             for j, node_idx in enumerate(customer_route_part):
-                if node_idx == 0: # 对返回仓库不计算惩罚
+                if node_idx == 0:  # 返回仓库不计算惩罚
                     continue
-
                 arrival_time = self.arrival_times[i][j]
-
                 e_j, l_j = self.problem.time_windows[node_idx]
-
                 early_penalty = torch.max(torch.tensor(0.0), e_j - arrival_time) * alpha
                 late_penalty = torch.max(torch.tensor(0.0), arrival_time - l_j) * beta
                 total_penalty += early_penalty + late_penalty
+                total_early += early_penalty
+                total_late += late_penalty
 
         total_cost = total_length + total_penalty
-        return total_cost, total_length, total_penalty
+        return (
+            float(total_cost),
+            float(total_length),
+            float(total_penalty),
+            float(total_early),
+            float(total_late),
+        )
 
 if __name__ == '__main__':
     # 示例用法
@@ -197,5 +207,7 @@ if __name__ == '__main__':
     print("已完成车辆:", env.finished_vehicles)
     print("车辆0的掩码:", env.get_mask(0))
 
-    cost, length, penalty = env.calculate_costs()
-    print(f"\n最终计算成本: {cost:.2f} (长度: {length:.2f}, 惩罚: {penalty:.2f})")
+    cost, length, penalty, early_p, late_p = env.calculate_costs()
+    print(
+        f"\n最终计算成本: {cost:.2f} (长度: {length:.2f}, 总惩罚: {penalty:.2f}, 早到: {early_p:.2f}, 晚到: {late_p:.2f})"
+    )

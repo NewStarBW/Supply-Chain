@@ -1,19 +1,49 @@
-# Model and training hyperparameters based on the paper
-model_params:
-  input_dim: 6      # Features: location(2) + demand(1) + service_time(1) + time_window(2)
+# --- 预设问题规模 ---
+problem_presets:
+  small:
+    name: "default" # 检查点目录名
+    num_customers: 20
+    num_vehicles: 2
+  medium:
+    name: "medium"
+    num_customers: 50
+    num_vehicles: 3 # 保持与上次训练一致
+
+# --- 基础模型参数 ---
+model_base_params:
+  input_dim: 6
   embed_dim: 128
   num_heads: 8
   num_layers: 3
-  num_customers: 20 # Can be 20, 50, 100
-  num_vehicles: 2   # Can be 2, 3, 4, 5
 
 training_params:
-  learning_rate: 0.0001 # 1e-4
-  num_epochs: 100
-  batches_per_epoch: 100 # Simplified from 640000 instances / 256 batch_size
-  batch_size: 32       # Reduced for faster local testing, paper uses 256
+  active_size: "small" # 用于 main.py，指定当前要训练的规模
+  learning_rate: 0.00001 # 1e-4
+  ema_alpha: 0.95 # 对应论文公式(18)中的β, 用于第一轮的基线计算
+  entropy_coefficient: 0.01 # 小量熵正则化以鼓励探索
+  advantage_normalization: true # 优势归一化，稳定训练过程
+  num_epochs: 100    # 恢复为较长期训练轮次（原始设置）
+  batches_per_epoch: 100    # 增加训练量以适应更复杂的问题
+  batch_size: 128
+  # 解码时的迟到偏置（penalty shaping）。为避免“优先满足时间窗”的偏向，默认关闭
+  decoder_lateness_bias: 5.0   # gamma，0 表示关闭（短期微调时关闭解码偏置）
+  time_norm_scale: 1.0        # 车辆状态中当前时间的归一化尺度（或使用各实例最大窗结束时间）
+  # 当启用时，训练过程使用 penalty_weight * penalty 代替原始 penalty
+  use_penalty_weight: false
+  penalty_weight: 1.0
 
-scheduler_params:
-  lr_decay_step_size: 1
-  lr_decay_gamma: 0.98
+  # 可选：在训练过程中对 penalty_weight 进行线性退火，从 start_weight 过渡到 end_weight
+  penalty_weight_schedule:
+    enabled: false
+    start_epoch: 72
+    end_epoch: 100
+    start_weight: 1.0
+    end_weight: 0.25
+
+early_stopping:
+  enabled: true
+  patience: 10 # 奖励连续10轮没有显著改善则停止
+  min_delta: 0.01
+
+
 
