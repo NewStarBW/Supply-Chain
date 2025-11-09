@@ -1,86 +1,112 @@
-# 多智能体强化学习求解车辆路径问题 (MVRPSTW)
+# 基于强化学习的车辆路径问题求解器
 
-本项目是论文 [《A Multi-Agent Reinforcement Learning Method With Route Recorders for Vehicle Routing in Supply Chain Management》](https://ieeexplore.ieee.org/abstract/document/9714823/) 的一个简化复现。
+本项目使用PyTorch实现了一个基于强化学习的车辆路径问题（VRP）求解器，特别关注带时间窗的场景（VRPTW）。该模型采用了基于注意力机制的Encoder-Decoder架构，并结合了REINFORCE算法和自批判基线（Self-Critic Baseline）进行训练。
 
-该项目使用多智能体强化学习（MARL）来解决带软时间窗的多车辆路径问题（MVRPSTW），旨在同时优化路径长度和时间窗惩罚。
+## 主要特性
+
+- **Encoder-Decoder 架构**: 使用Transformer Encoder提取节点间的复杂关系，并由一个自回归的Decoder生成车辆路径。
+- **多智能体方法**: 每辆车被视为一个独立的智能体，通过共享的全局信息和各自的局部信息进行决策。
+- **路径记录器 (Route Recorders)**: 引入了基于GRU的局部和全局记录器，使智能体能够记忆历史路径信息并进行有效的多智能体通信。
+- **动态惩罚权重**: 实现了`penalty_weight_schedule`，允许在训练过程中动态调整时间窗惩罚的权重。这使得模型在训练初期专注于满足约束（高惩罚权重），在后期则更侧重于优化路径长度（低惩罚权重）。
+- **灵活的配置**: 所有关键参数（如问题规模、模型维度、训练参数）都通过 `config.yaml` 文件进行管理，易于调整和实验。
+- **断点续训**: 训练过程可以随时中断，并从上次保存的检查点自动恢复。
+- **评估与可视化**: `evaluate.py` 脚本提供了与传统求解器（如OR-Tools）进行性能对比的功能，并能将生成的路径可视化。
 
 ## 项目结构
 
 ```
-.
-├── common/               # 环境和问题定义
-│   ├── env.py
-│   └── problem.py
-├── model/                # 神经网络模型组件
-│   ├── decoder.py
-│   ├── encoder.py
-│   ├── policy.py
-│   └── recorder.py
-├── training/             # 训练逻辑和检查点
-│   ├── checkpoints/
-│   └── trainer.py
-├── config.yaml           # 配置文件
-├── main.py               # 主程序入口
-└── requirements.txt      # Python包依赖
+Supply_Chain/
+├── Algorithm/              # 其他算法（OR-Tools, LKH3等）的参考实现
+├── benchmarks/             # VRP问题的基准数据集
+├── Solomon-dataset-main/   # VRPTW 经典数据集
+├── common/                 # 环境、问题定义和实用工具
+│   ├── env.py              # VRP环境，处理状态转移和奖励计算
+│   └── problem.py          # VRP问题定义
+├── model/                  # PyTorch模型定义
+│   ├── policy.py           # 策略网络（Encoder-Decoder）
+│   ├── critic.py           # 价值网络（基线）
+│   └── recorder.py         # 局部和全局路径记录器
+├── training/               # 训练相关模块
+│   ├── trainer.py          # 核心训练逻辑，包括rollout和参数更新
+│   └── checkpoints/        # 模型检查点保存目录
+├── config.yaml             # 项目配置文件
+├── main.py                 # 训练主入口
+├── evaluate.py             # 评估和可视化脚本
+├── requirements.txt        # Python依赖
+└── README.md               # 本文档
 ```
 
-## 环境与依赖
+## 安装与环境
 
-本项目基于 Python 3.9 开发，需要安装以下依赖包。
-
-### 1. 创建虚拟环境 (推荐)
-
-为了避免与您系统中的其他Python项目产生冲突，建议您创建一个独立的虚拟环境。
+建议使用虚拟环境以隔离项目依赖。
 
 ```bash
-# 创建一个名为 .venv 的虚拟环境
-python -m venv .venv
-```
+# 1. 创建并激活虚拟环境 (以Linux/macOS为例)
+python3 -m venv .venv
+source .venv/bin/activate
 
-### 2. 激活虚拟环境
-
-- **Windows**:
-  ```bash
-  .\.venv\Scripts\activate
-  ```
-- **macOS / Linux**:
-  ```bash
-  source .venv/bin/activate
-  ```
-
-### 3. 安装依赖包
-
-我们已经将所有需要的包记录在 `requirements.txt` 文件中。请运行以下命令进行安装：
-
-```bash
+# 2. 安装依赖
 pip install -r requirements.txt
 ```
 
-## 如何使用
+## 使用指南
 
-### 1. 配置训练参数
+### 1. 配置
 
-打开 `config.yaml` 文件，您可以根据需要调整模型和训练参数：
+所有实验设置均在 `config.yaml` 中定义。
 
-- `num_customers`: 客户数量 (例如: 20, 50, 100)
-- `num_vehicles`: 车辆数量 (例如: 2, 3, 4, 5)
-- `num_epochs`: 训练的总轮数
-- `batch_size`: 每批次训练的问题实例数量
+- **问题规模**:
+  ```yaml
+  problem_presets:
+    small:
+      num_customers: 20
+      num_vehicles: 2
+    medium:
+      name: "medium"
+      num_customers: 50
+      num_vehicles: 3 
+    # ... 其他规模
+  ```
+- **训练参数**:
+  ```yaml
+  training_params:
+    num_epochs: 100
+    batch_size: 128
+    learning_rate: 0.0001
+    # ...
+  ```
+- **惩罚权重调度器**:（为解决后期模型不能减小路径长度的问题，实测无效）
+  ```yaml
+  training_params:
+    use_penalty_weight: true
+    penalty_weight_schedule:
+      enabled: true
+      start_epoch: 72
+      end_epoch: 100
+      start_weight: 1.0
+      end_weight: 0.25
+  ```
+- **解码时的迟到偏置，为避免“优先满足时间窗”的偏向**:
+  ```yaml
+  decoder_lateness_bias: 5.0   # gamma，0 表示关闭（短期微调时关闭解码偏置）
+  time_norm_scale: 1.0        # 车辆状态中当前时间的归一化尺度（或使用各实例最大窗结束时间）
+  ```
 
-### 2. 开始训练
+### 2. 训练模型
 
-配置完成后，直接运行主程序即可开始训练：
+运行 `main.py` 启动训练。脚本会根据 `config.yaml` 中的设置，自动加载最新的检查点（如果存在）并继续训练。
 
 ```bash
 python main.py
 ```
 
-训练过程中，模型检查点（checkpoint）会自动保存在 `training/checkpoints/` 目录下。您可以随时使用 `Ctrl+C` 中断训练，下次重新运行时，程序会自动加载最新的检查点并从中断处继续。
+### 3. 评估模型
 
-## 核心技术
+使用 `evaluate.py` 来评估已训练模型的性能，并与OR-Tools等基线方法进行比较。
 
-- **模型框架**: 基于编码器-解码器 (Encoder-Decoder) 架构。
-- **编码器**: 采用多头自注意力机制 (Multi-Head Attention) 提取客户节点间的关系。
-- **路径记录器**: 论文的核心创新，使用GRU单元作为“局部”和“全局”路径记录器，为智能体（车辆）提供历史信息，并实现车辆间的通信。
-- **训练方法**: 采用带“自批判”基线 (Self-Critic Baseline) 的策略梯度强化学习算法 (REINFORCE)。
+```bash
+# 评估 "small" 规模的模型
+python evaluate.py --size small
+```
+评估脚本会输出路径长度、时间惩罚等关键指标，并生成路径可视化图片，保存在 `evaluation_plots/` 目录下。
 
